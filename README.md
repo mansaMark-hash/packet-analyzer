@@ -10,6 +10,7 @@ A passive packet sniffer and traffic analyzer built with Python and [Scapy](http
 - Top talkers (most active source IPs)
 - DNS lookup tracking
 - Port-scan detection (one IP sending SYN packets to many distinct ports)
+- ARP spoofing detection (one IP suddenly claimed by a different MAC address)
 - Live capture or offline `.pcap` analysis
 - Save captures to `.pcap` for Wireshark
 
@@ -69,7 +70,19 @@ Top talkers:
 
 A normal TCP connection starts with a SYN, and the server replies SYN+ACK. The analyzer tracks SYN-only packets and counts the distinct destination ports each source IP touches. Reaching the threshold (default 15) triggers an alert. Tools like Nmap's `-sS` scan look exactly like this on the wire.
 
-**Test it in your own lab:** run the analyzer on one VM, then run `nmap -sS <that-VM-IP>` from another VM you own.
+## How the ARP spoofing detection works
+
+ARP maps IP addresses to MAC addresses on a local network. The analyzer remembers the first MAC that answered for each IP. If a later ARP reply claims the same IP with a **different** MAC, it raises an alert. This is the signature of a man-in-the-middle attack. Note: legitimate cases (a router with two interfaces, a device replaced, failover) can also trigger it, so treat alerts as a prompt to investigate.
+
+## Try the detectors safely (no network traffic)
+
+```bash
+python scripts/make_sample_pcaps.py   # writes port_scan.pcap and arp_spoof.pcap
+python -m packet_analyzer -r port_scan.pcap
+python -m packet_analyzer -r arp_spoof.pcap
+```
+
+**Test the scan detector in your own lab:** run the analyzer on one VM, then run `nmap -sS <that-VM-IP>` from another VM you own.
 
 ## Project layout
 
@@ -77,6 +90,7 @@ A normal TCP connection starts with a SYN, and the server replies SYN+ACK. The a
 packet_analyzer/
   analyzer.py   # analysis logic
   cli.py        # command-line interface
+scripts/        # sample .pcap generator
 tests/          # pytest tests (no network needed)
 ```
 
@@ -90,7 +104,7 @@ pytest
 ## Roadmap
 
 - [ ] HTTP Host / User-Agent extraction
-- [ ] ARP spoofing detection
+- [x] ARP spoofing detection
 - [ ] JSON / CSV report export
 - [ ] Live terminal dashboard
 

@@ -13,6 +13,7 @@ class Analyzer:
         self.dns_queries = Counter()        # domain names looked up
         self.syn_ports = defaultdict(set)   # src IP -> distinct ports hit with SYN
         self.alerts = []
+        self.arp_table = {}                 # IP -> MAC first seen claiming it
         self.scan_threshold = scan_threshold
         self._alerted = set()
 
@@ -22,6 +23,7 @@ class Analyzer:
 
         if pkt.haslayer(ARP):
             self.protocols["ARP"] += 1
+            self._check_arp(pkt[ARP])
 
         if not pkt.haslayer(IP):
             return
@@ -51,6 +53,23 @@ class Analyzer:
         if len(self.syn_ports[src]) >= self.scan_threshold and src not in self._alerted:
             self._alerted.add(src)
             msg = f"[ALERT] Possible port scan from {src} ({len(self.syn_ports[src])} ports)"
+            self.alerts.append(msg)
+            print(msg)
+
+    def _check_arp(self, arp):
+        """One IP suddenly claimed by a different MAC = possible ARP spoofing."""
+        if arp.op != 2:  # only ARP replies ("is-at") make claims
+            return
+        ip, mac = arp.psrc, arp.hwsrc.lower()
+        if ip == "0.0.0.0":
+            return
+        known = self.arp_table.get(ip)
+        if known is None:
+            self.arp_table[ip] = mac
+        elif known != mac and (ip, mac) not in self._alerted:
+            self._alerted.add((ip, mac))
+            msg = (f"[ALERT] Possible ARP spoofing: {ip} was {known}, "
+                   f"now claimed by {mac}")
             self.alerts.append(msg)
             print(msg)
 
